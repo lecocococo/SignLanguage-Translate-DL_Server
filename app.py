@@ -14,7 +14,9 @@ import mediapipe as mp
 from scipy import stats
 from tensorflow.keras.models import load_model
 from werkzeug.utils import secure_filename
+from PIL import ImageFont, ImageDraw, Image
 import asyncio
+
 app = Flask(__name__)
 CORS(app)
 sequence = []
@@ -34,6 +36,26 @@ actions = np.array(os.listdir(
 
 
 ###############
+def createkorean():
+    kor = {}
+    kor['bruise'] = "멍이 들었습니다."
+    kor['cough'] = "기침을 합니다."
+    kor['default'] = "기본자세"
+    kor['digestion'] = "소화"
+    kor['heat'] = "열이 납니다."
+    kor['hello'] = "안녕하세요"
+    kor['injection'] = "주사"
+    kor['muscle'] = "근육"
+    kor['none'] = "없습니다"
+    kor['sick'] = "아프다"
+    kor['swell_up'] = "부었습니다."
+    kor['thanks'] = "감사합니다."
+
+    return kor
+
+
+font = ImageFont.truetype('fonts/SCDream6.otf', 27)
+
 
 mp_holistic = mp.solutions.holistic  # Holistic model
 mp_drawing = mp.solutions.drawing_utils  # Drawing utilities
@@ -142,7 +164,7 @@ async def video():
     print("in")
 
     info = request.files['file']
-    info.save('./videos/' + secure_filename(info.filename))
+    # info.save('./videos/' + secure_filename(info.filename))
     path = './videos/' + secure_filename(info.filename)
     print(path)
     await asyncio.wait([getResult(path)])
@@ -190,9 +212,12 @@ async def getResult(path):
     # sentence = []
     # predictions = []
 
-    global sequence
-    global sentence
-    global predictions
+    # global sequence
+    # global sentence
+    # global predictions
+    sequence = []
+    sentence = []
+    predictions = []
     threshold = 0.88
 
     # print("It'running")
@@ -202,12 +227,14 @@ async def getResult(path):
     # Set mediapipe model
     with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
         while cap.isOpened():
-
+            # print("It'running222")
             # Read
             ret, frame = cap.read()
 
+            if(ret == False):
+                break
             # Make detections
-
+            # print("It'running333")
             # if ret:
             image, results = mediapipe_detection(frame, holistic)
 
@@ -221,22 +248,56 @@ async def getResult(path):
 
             if len(sequence) == 30:
                 res = model.predict(np.expand_dims(sequence, axis=0))[0]
-                print(actions[np.argmax(res)])
-                predictions.append(np.argmax(res))
+                # print(actions[np.argmax(res)])
+                tempResult = actions[np.argmax(res)]
+                # print(tempResult)
+                if tempResult != "default" and res[np.argmax(res)] > threshold:
+                    # print(tempResult)
+                    sentence.append(tempResult)
+            print(sentence)
 
-            # post 해주는 부분
-            # url = 'http://127.0.0.1:5500/test'
-            # params = {"predictoin": ' '.join(s for s in sentence)}
-            # requests.post(url=url, json=params)
-            #####
+            # if predictions[-10:] and np.unique(predictions[-10:])[0] == np.argmax(res):
+            #     if res[np.argmax(res)] > threshold:
+            #         if len(sentence) > 0:
+            #             if actions[np.argmax(res)] != sentence[-1]:
+            #                 sentence.append(actions[np.argmax(res)])
+            #         else:
+            #             sentence.append(actions[np.argmax(res)])
 
-            # response = requests.post(url=url, json=params)
-            # response2 = requests.get(url=url, data=params)
-            # print(params)
-            # print(response)
+            # if len(sentence) > 1:
+            #     sentence = sentence[-1:]
+            # print(sentence)
 
         cap.release()
         cv2.destroyAllWindows()
+
+    # post 해주는 부분
+    url = 'https://127.0.0.1:35123/get_predictions'
+    headers = {'content-type': 'application/json'}
+    # json_data = {
+    #     "data": {
+    #         "predictoin": ' '.join(s for s in sentence)
+    #     },
+    #     "test": {
+    #         "in": 'it works'
+    #     }
+    # }
+    # print(Counter(sentence).most_common(n=1)[0][0])
+    # print(max(sentence, key=sentence.count))
+    params = {"prediction": "".join(max(sentence, key=sentence.count))}
+    print(params)
+    response = requests.post(
+        url=url, headers=headers, json=params, verify=False)
+
+    sentence = []
+    # requests.post(url=url, headers=headers, data=json.dumps(json_data))
+    #####
+
+    # response = requests.post(url=url, json=params)
+    # response2 = requests.get(url=url, data=params)
+    # print(params)
+
+    print(response)
 
 
 def result():
@@ -249,6 +310,8 @@ def result():
     global sentence
     global predictions
     threshold = 0.88
+
+    kor = createkorean()
 
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 
@@ -271,7 +334,7 @@ def result():
                 image, results = mediapipe_detection(frame, holistic)
 
             # Draw landmarks
-            draw_styled_landmarks(image, results)
+            # draw_styled_landmarks(image, results)
 
             # Prediction logic
             keypoints = extract_keypoints(results)
@@ -297,14 +360,23 @@ def result():
                     sentence = sentence[-1:]
 
                 # Vizualize
-                image = prob_viz(res, actions, image, colors)
+                # image = prob_viz(res, actions, image, colors)
 
             cv2.rectangle(image, (0, 0), (640, 40), (245, 117, 16), -1)
-            cv2.putText(image, ' '.join(sentence), (3, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
-
+            # cv2.putText(image, ' '.join(sentence), (3, 30),
+            #             cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+            # if len(sentence) > 0:
+            #     print(sentence[0])
+            # if len(sentence) > 0 and sentence[0] == 'default':
+            #     sentence = ["기본자세"]
+            if len(sentence) > 0:
+                image = Image.fromarray(image)
+                draw = ImageDraw.Draw(image)
+                draw.text(xy=(10, 10), text=kor[sentence[0]],
+                          font=font, fill=(255, 255, 255))
+                image = np.array(image)
             # Show to screen
-            image = cv2.resize(image, (1000, 800),
+            image = cv2.resize(image, (510, 410),
                                interpolation=cv2.INTER_LINEAR)
 
             # cv2.imshow('sign', image)
@@ -336,10 +408,10 @@ def result():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port="5500", debug=True,
-            threaded=True)
     # app.run(host="0.0.0.0", port="5500", debug=True,
-    #         threaded=True, ssl_context=(cert.pem, key.pem))
+    #         threaded=True)
+    app.run(host="0.0.0.0", port="5500", debug=True,
+            threaded=True, ssl_context=(cert.pem, key.pem))
 
 
 # def gen():
